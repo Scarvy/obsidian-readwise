@@ -69,7 +69,7 @@ test("getErrorDetailsFromResponse reports invalid/expired tokens as a structured
 test("getErrorDetailsFromResponse preserves existing lock and conflict messages", async () => {
   assert.deepEqual(
     await getErrorDetailsFromResponse(new Response("", { status: 409 })),
-    { message: "Sync in progress initiated by different client" },
+    { message: "Sync in progress initiated by different client." },
   );
   assert.deepEqual(
     await getErrorDetailsFromResponse(new Response("", { status: 417 })),
