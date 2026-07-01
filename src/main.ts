@@ -946,7 +946,12 @@ class ReadwiseSettingTab extends PluginSettingTab {
     containerEl.getElementsByTagName('p')[0].appendText(' 📚');
     containerEl.createEl('h2', { text: 'Settings' });
 
-    if (this.plugin.getToken()) {
+    if (this.plugin.isTokenStranded()) {
+      new Setting(containerEl)
+        .setName("Readwise connection unavailable on this device")
+        .setClass("rw-setting-stranded")
+        .setDesc("This vault's Readwise connection is stored in Obsidian Keychain, which isn't available in this version of Obsidian. Update Obsidian on this device to reconnect.");
+    } else if (this.plugin.getToken()) {
       new Setting(containerEl)
         .setName("Sync your Readwise data with Obsidian")
         .setDesc("On first sync, the Readwise plugin will create a new folder containing all your highlights")
@@ -1042,6 +1047,45 @@ class ReadwiseSettingTab extends PluginSettingTab {
       if (this.plugin.settings.lastSyncFailed) {
         this.plugin.showInfoStatus(containerEl.find(".rw-setting-sync .rw-info-container").parentElement, "Last sync failed", "rw-error");
       }
+
+      if (hasSecretStorage(this.app) && !this.plugin.settings.keychainOnly) {
+        new Setting(containerEl)
+          .setName("Move your token to Obsidian Keychain")
+          .setDesc("Stores your Readwise token in this device's Obsidian Keychain instead of in plaintext in data.json. Keychain entries don't sync between devices, so other devices sharing this vault will need to reconnect separately.")
+          .addButton((button) => {
+            button.setButtonText("Move to Keychain").onClick(() => {
+              this.confirmAction(
+                "Move token to Obsidian Keychain?",
+                "Your Readwise token will be stored in this device's Obsidian Keychain and removed from data.json. If you sync this vault to other devices, they will need to reconnect to Readwise separately.",
+                "Move token",
+                async () => {
+                  const migrated = await this.plugin.migrateTokenToKeychain();
+                  if (migrated) {
+                    this.plugin.notice("Token moved to Obsidian Keychain", true);
+                    this.display();
+                  }
+                }
+              );
+            });
+          });
+      }
+
+      new Setting(containerEl)
+        .setName("Disconnect Readwise")
+        .setDesc("Removes your stored Readwise token. You'll need to reconnect to resume syncing.")
+        .addButton((button) => {
+          button.setButtonText("Disconnect").setWarning().onClick(() => {
+            this.confirmAction(
+              "Disconnect from Readwise?",
+              "This removes your stored Readwise token. You'll need to reconnect to resume syncing.",
+              "Disconnect",
+              async () => {
+                await this.plugin.clearToken();
+                this.display();
+              }
+            );
+          });
+        });
     } else {
       new Setting(containerEl)
         .setName("Connect Obsidian to Readwise")
@@ -1063,5 +1107,22 @@ class ReadwiseSettingTab extends PluginSettingTab {
     }
     const help = containerEl.createEl('p',);
     help.innerHTML = "Question? Please see our <a href='https://help.readwise.io/article/125-how-does-the-readwise-to-obsidian-export-integration-work'>Documentation</a> or email us at <a href='mailto:hello@readwise.io'>hello@readwise.io</a> 🙂";
+  }
+
+  /** Shows a confirm/cancel modal, matching the style of the reimport
+   * confirmation in main.ts, and runs `onConfirm` if the user confirms. */
+  private confirmAction(title: string, message: string, confirmText: string, onConfirm: () => void): void {
+    const modal = new Modal(this.app);
+    modal.titleEl.setText(title);
+    modal.contentEl.createEl('p', { text: message, cls: 'rw-modal-warning-text' });
+    const buttonsContainer = modal.contentEl.createEl('div', { cls: 'rw-modal-btns' });
+    const cancelBtn = buttonsContainer.createEl('button', { text: 'Cancel' });
+    const confirmBtn = buttonsContainer.createEl('button', { text: confirmText, cls: 'mod-warning' });
+    cancelBtn.onClickEvent(() => modal.close());
+    confirmBtn.onClickEvent(() => {
+      modal.close();
+      onConfirm();
+    });
+    modal.open();
   }
 }
