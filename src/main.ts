@@ -115,12 +115,24 @@ export default class ReadwisePlugin extends Plugin {
   vault: Vault;
   scheduleInterval: null | number = null;
   statusBar: StatusBar;
+  settingTab: ReadwiseSettingTab;
 
   async handleSyncError(buttonContext: ButtonComponent, error: string | ReadwiseSyncError) {
     const msg = typeof error === "string" ? error : error.message;
     await this.clearSettingsAfterRun();
     this.settings.lastSyncFailed = true;
     await this.saveSettings();
+    if (typeof error !== "string" && error.code === "invalid_token") {
+      // The stored token was rejected outright (as opposed to a transient
+      // failure): clear it, always toast (even for button-triggered syncs,
+      // since the button is about to be replaced), and rebuild the
+      // settings tab so it shows "Connect" again instead of a sync button
+      // that will keep failing the same way.
+      await this.clearToken();
+      this.notice(msg, true, 4, true);
+      this.settingTab?.display();
+      return;
+    }
     if (buttonContext) {
       this.showSyncErrorStatus(buttonContext.buttonEl.parentElement, msg);
       buttonContext.buttonEl.setText("Run sync");
@@ -590,7 +602,7 @@ export default class ReadwisePlugin extends Plugin {
         return;
       } else {
         const syncError = await getErrorDetailsFromResponse(response);
-        if (syncError.code === "account_expired") {
+        if (syncError.code === "account_expired" || syncError.code === "invalid_token") {
           await this.handleSyncError(undefined, syncError);
           return;
         }
@@ -766,7 +778,8 @@ export default class ReadwisePlugin extends Plugin {
       });
     });
 
-    this.addSettingTab(new ReadwiseSettingTab(this.app, this));
+    this.settingTab = new ReadwiseSettingTab(this.app, this);
+    this.addSettingTab(this.settingTab);
 
     // ensure workspace is settled; this ensures cache is loaded
     this.app.workspace.onLayoutReady(async () => {
