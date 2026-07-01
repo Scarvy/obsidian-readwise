@@ -2,6 +2,9 @@
  * Helpers for storing the Readwise API token in Obsidian's Keychain
  * (`App.secretStorage`, added in Obsidian 1.11.4) instead of plaintext in
  * `data.json`.
+ * 
+ * Reference: https://docs.obsidian.md/plugins/guides/secret-storage
+ * API: https://docs.obsidian.md/Reference/TypeScript+API/SecretStorage
  *
  * This module has no dependency on the `obsidian` package so it can be unit
  * tested without mocking Obsidian. Callers pass in whatever duck-types as
@@ -17,6 +20,7 @@
 export interface SecretStorageLike {
   getSecret(id: string): string | null;
   setSecret(id: string, secret: string): void;
+  listSecrets(): string[];
   deleteSecret?(id: string): void;
 }
 
@@ -41,6 +45,9 @@ export function hasSecretStorage(app: SecretStorageHost): boolean {
  * this plugin before (i.e. `Plugin.loadData()` returned nothing). Used to
  * put brand-new installs straight into keychain-only mode, since there's no
  * existing plaintext token or synced-device expectations to worry about.
+ *
+ * Inspired by
+ * https://github.com/logancyang/obsidian-copilot/blob/632c1e81b3a737f9931292ca7a667b143dc25614/src/services/settingsPersistence.ts#L313-L315
  */
 export function isFreshInstall(rawData: unknown): boolean {
   return rawData === null || rawData === undefined;
@@ -51,6 +58,9 @@ export function isFreshInstall(rawData: unknown): boolean {
  * on a device/Obsidian build without SecretStorage support. The token isn't
  * actually gone - it's just inaccessible here - so callers should say so
  * rather than presenting this as "not connected".
+ *
+ * Inspired by
+ * https://github.com/logancyang/obsidian-copilot/blob/632c1e81b3a737f9931292ca7a667b143dc25614/src/services/settingsPersistence.ts#L332-L352
  */
 export function isStranded(app: SecretStorageHost, settings: TokenSettings): boolean {
   return settings.keychainOnly && !hasSecretStorage(app);
@@ -85,6 +95,9 @@ export function setToken(app: SecretStorageHost, settings: TokenSettings, value:
 export function clearToken(app: SecretStorageHost, settings: TokenSettings): void {
   if (settings.keychainOnly && app.secretStorage) {
     const storage = app.secretStorage;
+    // Reason: deleteSecret exists at runtime but is not in the official type
+    // definitions. Prefer real deletion; fall back to empty-string tombstone.
+    // Reference: https://github.com/logancyang/obsidian-copilot/blob/632c1e81b3a737f9931292ca7a667b143dc25614/src/services/keychainService.ts#L284-L292
     if (typeof storage.deleteSecret === "function") {
       storage.deleteSecret(TOKEN_SECRET_ID);
     } else {
