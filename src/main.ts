@@ -94,7 +94,7 @@ interface ReadwisePluginSettings {
 // quoted keys for easy copying to data.json during development
 const DEFAULT_SETTINGS: ReadwisePluginSettings = {
   "token": "",
-  "keychainOnly": false,
+  "keychainOnly": false, // set to true on fresh installs when Keychain is available, or by the user via "Move to Obsidian Keychain (OS Keychain)"
   "readwiseDir": "Readwise",
   "frequency": "0",
   "triggerOnLoad": true,
