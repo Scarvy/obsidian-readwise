@@ -15,6 +15,15 @@ import { Md5 } from "ts-md5";
 import { getErrorDetailsFromResponse, ReadwiseSyncError } from "./errors";
 import { readwiseSyncFilePath } from "./paths";
 import { StatusBar } from "./status";
+import {
+  clearToken as clearStoredToken,
+  getToken as getStoredToken,
+  hasSecretStorage,
+  isFreshInstall,
+  isStranded,
+  migrateTokenToKeychain as migrateStoredTokenToKeychain,
+  setToken as setStoredToken,
+} from "./secretStorage";
 
 // keep pluginVersion in sync with manifest.json
 const pluginVersion = "3.0.3";
@@ -40,7 +49,14 @@ interface ExportStatusResponse {
 }
 
 interface ReadwisePluginSettings {
+  /** Plaintext fallback token, used when keychainOnly is false or when
+   * Obsidian Keychain (SecretStorage) isn't available on this device. */
   token: string;
+
+  /** Whether the Readwise token is stored in Obsidian Keychain rather than
+   * plaintext here. Set automatically on fresh installs when Keychain is
+   * available, or by the user via "Move to Obsidian Keychain". */
+  keychainOnly: boolean;
 
   /** Folder to save highlights */
   readwiseDir: string;
@@ -78,6 +94,7 @@ interface ReadwisePluginSettings {
 // quoted keys for easy copying to data.json during development
 const DEFAULT_SETTINGS: ReadwisePluginSettings = {
   "token": "",
+  "keychainOnly": false,
   "readwiseDir": "Readwise",
   "frequency": "0",
   "triggerOnLoad": true,
@@ -314,7 +331,7 @@ export default class ReadwisePlugin extends Plugin {
 
   getAuthHeaders() {
     return {
-      'AUTHORIZATION': `Token ${this.settings.token}`,
+      'AUTHORIZATION': `Token ${this.getToken()}`,
       'Obsidian-Client': `${this.getObsidianClientID()}`,
       'Readwise-Client-Version': pluginVersion,
     };
@@ -511,7 +528,7 @@ export default class ReadwisePlugin extends Plugin {
     /** if true, was not initiated by user */
     auto?: boolean,
   ) {
-    if (!this.settings.token) return;
+    if (!this.getToken()) return;
 
     let targetBookIds = [
       // try to sync provided bookIds
@@ -795,11 +812,49 @@ export default class ReadwisePlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const rawData = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, rawData);
+    if (isFreshInstall(rawData) && hasSecretStorage(this.app)) {
+      // Brand-new install with Keychain support: skip plaintext storage
+      // entirely rather than writing a token to data.json and migrating
+      // it later.
+      this.settings.keychainOnly = true;
+    }
   }
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  getToken(): string {
+    return getStoredToken(this.app, this.settings);
+  }
+
+  async setToken(value: string): Promise<void> {
+    setStoredToken(this.app, this.settings, value);
+    await this.saveSettings();
+  }
+
+  async clearToken(): Promise<void> {
+    clearStoredToken(this.app, this.settings);
+    await this.saveSettings();
+  }
+
+  /** Moves an existing plaintext token into Obsidian Keychain. Returns
+   * false without changing anything if Keychain isn't available here. */
+  async migrateTokenToKeychain(): Promise<boolean> {
+    const migrated = migrateStoredTokenToKeychain(this.app, this.settings);
+    if (migrated) {
+      await this.saveSettings();
+    }
+    return migrated;
+  }
+
+  /** True when this vault is keychain-only but Keychain is unavailable on
+   * this device/Obsidian build, so the token is unreachable here even
+   * though the vault is still "connected". */
+  isTokenStranded(): boolean {
+    return isStranded(this.app, this.settings);
   }
 
   getObsidianClientID() {
@@ -837,8 +892,7 @@ export default class ReadwisePlugin extends Plugin {
     }
     if (data.userAccessToken) {
       console.log("Readwise Official plugin: successfully authenticated with Readwise");
-      this.settings.token = data.userAccessToken;
-      await this.saveSettings();
+      await this.setToken(data.userAccessToken);
     } else {
       if (attempt > 20) {
         console.log('Readwise Official plugin: reached attempt limit in getUserAuthToken');
@@ -892,7 +946,7 @@ class ReadwiseSettingTab extends PluginSettingTab {
     containerEl.getElementsByTagName('p')[0].appendText(' 📚');
     containerEl.createEl('h2', { text: 'Settings' });
 
-    if (this.plugin.settings.token) {
+    if (this.plugin.getToken()) {
       new Setting(containerEl)
         .setName("Sync your Readwise data with Obsidian")
         .setDesc("On first sync, the Readwise plugin will create a new folder containing all your highlights")
