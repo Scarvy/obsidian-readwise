@@ -11,6 +11,8 @@ export interface ReadwiseSyncError {
 
 export const ACCOUNT_EXPIRED_MESSAGE = "Your Readwise trial has expired. Upgrade or renew your account to continue syncing highlights to Obsidian.";
 export const INVALID_TOKEN_MESSAGE = "Your Readwise connection is no longer valid. Please reconnect in the Readwise plugin settings.";
+export const SYNC_IN_PROGRESS_MESSAGE = "Sync in progress initiated by different client.";
+export const EXPORT_LOCKED_MESSAGE = "Obsidian export is locked. Wait for an hour.";
 
 export async function getJSONErrorFromResponse(response: Response): Promise<ReadwiseAPIErrorResponse | null> {
   const contentType = response.headers.get("content-type") || "";
@@ -35,10 +37,10 @@ export async function getErrorDetailsFromResponse(response?: Response): Promise<
     return { code: "invalid_token", message: INVALID_TOKEN_MESSAGE };
   }
   if (response.status === 409) {
-    return { message: "Sync in progress initiated by different client" };
+    return { message: SYNC_IN_PROGRESS_MESSAGE };
   }
   if (response.status === 417) {
-    return { message: "Obsidian export is locked. Wait for an hour." };
+    return { message: EXPORT_LOCKED_MESSAGE };
   }
 
   const errorResponse = await getJSONErrorFromResponse(response);
