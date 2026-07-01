@@ -10,6 +10,7 @@ export interface ReadwiseSyncError {
 }
 
 export const ACCOUNT_EXPIRED_MESSAGE = "Your Readwise trial has expired. Upgrade or renew your account to continue syncing highlights to Obsidian.";
+export const INVALID_TOKEN_MESSAGE = "Your Readwise connection is no longer valid. Please reconnect in the Readwise plugin settings.";
 
 export async function getJSONErrorFromResponse(response: Response): Promise<ReadwiseAPIErrorResponse | null> {
   const contentType = response.headers.get("content-type") || "";
@@ -30,6 +31,9 @@ export async function getErrorDetailsFromResponse(response?: Response): Promise<
     return { message: "Can't connect to server" };
   }
 
+  if (response.status === 401) {
+    return { code: "invalid_token", message: INVALID_TOKEN_MESSAGE };
+  }
   if (response.status === 409) {
     return { message: "Sync in progress initiated by different client" };
   }

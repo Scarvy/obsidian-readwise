@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const {
   ACCOUNT_EXPIRED_MESSAGE,
+  INVALID_TOKEN_MESSAGE,
   getErrorDetailsFromResponse,
 } = require("../.test-build/src/errors");
 
@@ -50,6 +51,18 @@ test("getErrorDetailsFromResponse ignores plain expired account text responses",
 
   assert.deepEqual(error, {
     message: "Forbidden",
+  });
+});
+
+test("getErrorDetailsFromResponse reports invalid/expired tokens as a structured error", async () => {
+  const error = await getErrorDetailsFromResponse(new Response("", {
+    status: 401,
+    statusText: "Unauthorized",
+  }));
+
+  assert.deepEqual(error, {
+    code: "invalid_token",
+    message: INVALID_TOKEN_MESSAGE,
   });
 });
 
